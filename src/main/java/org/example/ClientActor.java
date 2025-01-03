@@ -6,10 +6,6 @@ import akka.actor.Props;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 
-import java.io.Serializable;
-import java.util.HashMap;
-import java.util.Map;
-
 public class ClientActor extends AbstractActor {
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
     private final ActorRef serverActor;
@@ -26,6 +22,7 @@ public class ClientActor extends AbstractActor {
 
     @Override
     public void preStart() {
+        // Register with the server only once when the client starts
         serverActor.tell(new ServerActor.RegisterClient(name), getSelf());
     }
 
@@ -36,23 +33,31 @@ public class ClientActor extends AbstractActor {
                     log.info("Registered with server as {}", success.getName());
                 })
                 .match(ServerActor.ClientList.class, clientList -> {
+                    // Show available clients, excluding self
                     log.info("Available clients: {}", clientList.getClients());
+                    System.out.println("\nAvailable clients:");
+                    for (String clientName : clientList.getClients()) {
+                        System.out.println(clientName);
+                    }
                 })
                 .match(ServerActor.Message.class, message -> {
-                    log.info("Message from {}: {}", message.getSender(), message.getContent());
+                    // Handle incoming chat messages (received continuously)
+                    System.out.println(message.getSender() + ": " + message.getContent());
                 })
                 .match(ServerActor.ErrorMessage.class, error -> {
-                    log.warning("Error: {}", error.getError());
-                })
-                .match(ServerActor.FindClients.class, findClients -> {
-                    serverActor.tell(findClients, getSelf());
+                    System.out.println("Error: " + error.getError());
                 })
                 .match(ServerActor.SendMessage.class, sendMessage -> {
-                    // Handle SendMessage when received by the clientActor
+                    // Handle outgoing message when received by ClientActor
                     log.info("Received a SendMessage to deliver: {} -> {}: {}",
                             sendMessage.getSender(), sendMessage.getRecipient(), sendMessage.getContent());
                 })
+                .matchEquals("startChat", msg -> {
+                    // Logic to initiate chat with another client
+                    String recipient = (String) msg;
+                    ActorRef recipientActor = serverActor;
+                    getContext().actorOf(ChatSessionActor.props(getSelf(), recipientActor));
+                })
                 .build();
     }
-
 }

@@ -12,6 +12,8 @@
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Specify Scala version -->
+        <scala.version>2.13.8</scala.version>
     </properties>
 
     <dependencies>
@@ -21,24 +23,28 @@
             <artifactId>akka-actor_2.13</artifactId>
             <version>2.6.20</version>
         </dependency>
+
         <!-- Akka Remote -->
         <dependency>
             <groupId>com.typesafe.akka</groupId>
             <artifactId>akka-remote_2.13</artifactId>
             <version>2.6.20</version>
         </dependency>
+
         <!-- Akka SLF4J for logging -->
         <dependency>
             <groupId>com.typesafe.akka</groupId>
             <artifactId>akka-slf4j_2.13</artifactId>
             <version>2.6.20</version>
         </dependency>
+
         <!-- SLF4J API -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>1.7.36</version>
         </dependency>
+
         <!-- Logback Classic for logging implementation -->
         <dependency>
             <groupId>ch.qos.logback</groupId>
@@ -46,7 +52,39 @@
             <version>1.2.11</version>
         </dependency>
 
+        <!-- Scala Library (for using Scala-based Akka components) -->
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>${scala.version}</version>
+        </dependency>
+
+        <!-- Akka TestKit (optional, for testing) -->
+        <dependency>
+            <groupId>com.typesafe.akka</groupId>
+            <artifactId>akka-testkit_2.13</artifactId>
+            <version>2.6.20</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
-
+    <build>
+        <plugins>
+            <!-- Scala Plugin (if you need Scala-based build tools) -->
+            <plugin>
+                <groupId>org.scala-tools</groupId>
+                <artifactId>maven-scala-plugin</artifactId>
+                <version>2.15.2</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>compile</goal>
+                            <goal>testCompile</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
