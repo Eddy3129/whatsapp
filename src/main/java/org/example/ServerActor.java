@@ -3,72 +3,59 @@ package org.example;
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
-import akka.actor.SupervisorStrategy;
-import akka.actor.Terminated;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 
 import java.io.Serializable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class ServerActor extends AbstractActor {
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
-    private final Map<String, ActorRef> clients = new HashMap<>(); // Registered clients
-    private final Map<String, Queue<Message>> offlineMessages = new HashMap<>(); // Offline message queue
+    private final Map<String, ActorRef> clients = new HashMap<>();
 
     public static Props props() {
         return Props.create(ServerActor.class, ServerActor::new);
     }
 
     @Override
-    public SupervisorStrategy supervisorStrategy() {
-        return SupervisorStrategy.stoppingStrategy();  // You can choose stop, restart, etc. here.
-    }
-
-    @Override
     public Receive createReceive() {
         return receiveBuilder()
                 .match(RegisterClient.class, register -> {
-                    log.info("Registering client: {}", register.getName());
-                    if (clients.containsKey(register.getName())) {
-                        getSender().tell(new ErrorMessage("Client name already taken"), getSelf());
-                    } else {
-                        clients.put(register.getName(), getSender());
-                        getContext().watch(getSender());  // Watch the client for termination
-                        getSender().tell(new RegistrationSuccess(register.getName()), getSelf());
-                    }
+                    clients.put(register.getName(), getSender());
+                    log.info("Client registered: {}", register.getName());
+                    getSender().tell(new RegistrationSuccess(register.getName()), getSelf());
                 })
                 .match(FindClients.class, find -> {
                     log.info("Responding with client list to {}", getSender());
-                    List<String> clientList = new ArrayList<>(clients.keySet());
-                    // Exclude self from the client list
-                    clientList.remove(getSender().path().name());
-                    getSender().tell(new ClientList(clientList), getSelf());
+
+                    // Exclude the client making the request
+                    List<String> availableClients = new ArrayList<>();
+                    for (String client : clients.keySet()) {
+                        if (!client.equals(find.getRequesterName())) {
+                            availableClients.add(client);
+                        }
+                    }
+
+                    getSender().tell(new ClientList(availableClients), getSelf());
                 })
                 .match(SendMessage.class, message -> {
                     ActorRef recipient = clients.get(message.getRecipient());
                     if (recipient != null) {
-                        log.info("Routing message from {} to {}", message.getSender(), message.getRecipient());
                         recipient.tell(new Message(message.getSender(), message.getContent()), getSelf());
                     } else {
-                        log.warning("Recipient {} not found. Storing message for later delivery.", message.getRecipient());
-                        // Queue message for offline client
-                        offlineMessages.computeIfAbsent(message.getRecipient(), k -> new LinkedList<>())
-                                .add(new Message(message.getSender(), message.getContent()));
-                        getSender().tell(new ErrorMessage("Recipient not found, message queued"), getSelf());
+                        getSender().tell(new ErrorMessage("Recipient not found"), getSelf());
                     }
-                })
-                .match(Terminated.class, terminated -> {
-                    String disconnectedClient = terminated.getActor().path().name();
-                    clients.remove(disconnectedClient);
-                    offlineMessages.remove(disconnectedClient);
-                    log.info("Client {} disconnected", disconnectedClient);
                 })
                 .build();
     }
 
     // Message Classes
+
     public static class RegisterClient implements Serializable {
+        private static final long serialVersionUID = 1L;
         private final String name;
 
         public RegisterClient(String name) {
@@ -81,6 +68,7 @@ public class ServerActor extends AbstractActor {
     }
 
     public static class RegistrationSuccess implements Serializable {
+        private static final long serialVersionUID = 1L;
         private final String name;
 
         public RegistrationSuccess(String name) {
@@ -92,13 +80,27 @@ public class ServerActor extends AbstractActor {
         }
     }
 
-    public static class FindClients implements Serializable {}
+    public static class FindClients implements Serializable {
+        private static final long serialVersionUID = 1L;
+        private final String requesterName;
+
+        public FindClients(String requesterName) {
+            this.requesterName = requesterName;
+        }
+
+        public String getRequesterName() {
+            return requesterName;
+        }
+    }
+
 
     public static class ClientList implements Serializable {
+        private static final long serialVersionUID = 1L;
         private final List<String> clients;
 
-        public ClientList(List<String> clients) {
-            this.clients = clients;
+        public ClientList(Iterable<String> clients) {
+            this.clients = new ArrayList<>();
+            clients.forEach(this.clients::add); // Convert the Iterable to a List
         }
 
         public List<String> getClients() {
@@ -106,7 +108,9 @@ public class ServerActor extends AbstractActor {
         }
     }
 
+
     public static class SendMessage implements Serializable {
+        private static final long serialVersionUID = 1L;
         private final String sender;
         private final String recipient;
         private final String content;
@@ -131,6 +135,7 @@ public class ServerActor extends AbstractActor {
     }
 
     public static class ErrorMessage implements Serializable {
+        private static final long serialVersionUID = 1L;
         private final String error;
 
         public ErrorMessage(String error) {
@@ -143,6 +148,7 @@ public class ServerActor extends AbstractActor {
     }
 
     public static class Message implements Serializable {
+        private static final long serialVersionUID = 1L;
         private final String sender;
         private final String content;
 
