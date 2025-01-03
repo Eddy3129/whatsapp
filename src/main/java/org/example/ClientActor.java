@@ -1,3 +1,4 @@
+// ClientActor.java
 package org.example;
 
 import akka.actor.AbstractActor;
@@ -6,22 +7,20 @@ import akka.actor.Props;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 
-import java.io.Serializable;
-import java.util.HashMap;
-import java.util.Map;
-
 public class ClientActor extends AbstractActor {
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
     private final ActorRef serverActor;
     private final String name;
+    private final ChatUI chatUI;
 
-    public ClientActor(ActorRef serverActor, String name) {
+    public ClientActor(ActorRef serverActor, String name, ChatUI chatUI) {
         this.serverActor = serverActor;
         this.name = name;
+        this.chatUI = chatUI;
     }
 
-    public static Props props(ActorRef serverActor, String name) {
-        return Props.create(ClientActor.class, () -> new ClientActor(serverActor, name));
+    public static Props props(ActorRef serverActor, String name, ChatUI chatUI) {
+        return Props.create(ClientActor.class, () -> new ClientActor(serverActor, name, chatUI));
     }
 
     @Override
@@ -34,27 +33,20 @@ public class ClientActor extends AbstractActor {
         return receiveBuilder()
                 .match(ServerActor.RegistrationSuccess.class, success -> {
                     log.info("Registered with server as {}", success.getName());
+                    chatUI.displaySystemMessage("Successfully connected to chat server");
                 })
                 .match(ServerActor.ClientList.class, clientList -> {
-                    // Exclude the client itself from the list
-                    log.info("Available clients: {}", clientList.getClients());
+                    chatUI.displayAvailableClients(clientList.getClients());
                 })
-                .match(ServerActor.Message.class, message -> {
-                    log.info("Message from {}: {}", message.getSender(), message.getContent());
+                .match(Message.class, message -> {
+                    chatUI.displayMessage(message);
+                })
+                .match(ServerActor.ChatHistory.class, history -> {
+                    chatUI.displayChatHistory(history.getMessages());
                 })
                 .match(ServerActor.ErrorMessage.class, error -> {
-                    log.warning("Error: {}", error.getError());
-                })
-                .match(ServerActor.FindClients.class, findClients -> {
-                    // Pass the current client's name to avoid including it in the list
-                    serverActor.tell(new ServerActor.FindClients(name), getSelf());
-                })
-                .match(ServerActor.SendMessage.class, sendMessage -> {
-                    log.info("Received a SendMessage to deliver: {} -> {}: {}",
-                            sendMessage.getSender(), sendMessage.getRecipient(), sendMessage.getContent());
+                    chatUI.displayError(error.getError());
                 })
                 .build();
     }
-
-
 }

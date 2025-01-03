@@ -1,56 +1,105 @@
+// ClientApp.java
 package org.example;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
+import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.CompletionStage;
 
 public class ClientApp {
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter your name: ");
-        String name = scanner.nextLine();
+    private final ActorSystem system;
+    private final ActorRef clientActor;
+    private final ActorRef serverActor;
+    private final ChatUI chatUI;
+    private final String username;
 
-        ActorSystem system = ActorSystem.create("ChatClient");
-        ActorRef serverActor = system.actorSelection("akka://ChatServer@127.0.0.1:25520/user/serverActor")
-                .resolveOne(java.time.Duration.ofSeconds(5)).toCompletableFuture().join();
+    public ClientApp(String username) {
+        this.username = username;
+        this.system = ActorSystem.create("ChatClient");
+        this.chatUI = new ChatUI(username);
 
-        ActorRef clientActor = system.actorOf(ClientActor.props(serverActor, name), "clientActor");
+        // Connect to server
+        CompletionStage<ActorRef> serverFuture = system.actorSelection("akka://ChatServer@127.0.0.1:25520/user/serverActor")
+                .resolveOne(java.time.Duration.ofSeconds(5));
 
+        this.serverActor = serverFuture.toCompletableFuture().join();
+        this.clientActor = system.actorOf(ClientActor.props(serverActor, username, chatUI), "clientActor");
+    }
+
+    public void start() {
+        chatUI.start();
+        processUserInput();
+    }
+
+    private void processUserInput() {
         while (true) {
-            System.out.println("Options: [1] Find Clients [2] Send Message [3] Exit");
-            int choice = getUserChoice(scanner);
+            String input = chatUI.readLine().trim();
 
-            if (choice == 1) {
-                serverActor.tell(new ServerActor.FindClients(name), clientActor);
-            } else if (choice == 2) {
-                System.out.print("Enter recipient name: ");
-                String recipient = scanner.nextLine();
-                System.out.print("Enter message: ");
-                String message = scanner.nextLine();
-                serverActor.tell(new ServerActor.SendMessage(name, recipient, message), clientActor);
-            } else if (choice == 3) {
-                system.terminate();
-                break;
+            if (chatUI.isInChatMode()) {
+                handleChatModeInput(input);
+            } else {
+                handleMainMenuInput(input);
             }
         }
     }
 
-    // Helper method to get a valid user choice
-    private static int getUserChoice(Scanner scanner) {
-        while (true) {
-            try {
-                String input = scanner.nextLine(); // Use nextLine to capture the full input
-                int choice = Integer.parseInt(input); // Try to parse the input as an integer
-
-                if (choice >= 1 && choice <= 3) { // Check if the choice is valid
-                    return choice;
-                } else {
-                    System.out.println("Invalid choice. Please select 1, 2, or 3.");
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("Invalid input. Please enter a number (1, 2, or 3).");
-            }
+    private void handleChatModeInput(String input) {
+        if ("/exit".equalsIgnoreCase(input)) {
+            chatUI.exitChatMode();
+            return;
         }
+
+        if (!input.isEmpty()) {
+            serverActor.tell(
+                    new ServerActor.SendMessage(username, chatUI.getCurrentChatPartner(), input),
+                    clientActor
+            );
+        }
+    }
+
+    private void handleMainMenuInput(String input) {
+        try {
+            int choice = Integer.parseInt(input);
+            switch (choice) {
+                case 1:
+                    // Show online users
+                    serverActor.tell(new ServerActor.FindClients(username), clientActor);
+                    break;
+
+                case 2:
+                    // Start chat
+                    System.out.print("Enter username to chat with: ");
+                    String chatPartner = chatUI.readLine().trim();
+
+                    // Get chat history and enter chat mode
+                    serverActor.tell(new ServerActor.GetChatHistory(username, chatPartner), clientActor);
+                    chatUI.enterChatMode(chatPartner);
+                    break;
+
+                case 3:
+                    // Exit
+                    system.terminate();
+                    System.exit(0);
+                    break;
+
+                default:
+                    chatUI.displayError("Invalid option. Please try again.");
+                    chatUI.displayMainMenu();
+            }
+        } catch (NumberFormatException e) {
+            chatUI.displayError("Please enter a number.");
+            chatUI.displayMainMenu();
+        }
+    }
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Enter your username: ");
+        String username = scanner.nextLine().trim();
+
+        ClientApp client = new ClientApp(username);
+        client.start();
     }
 }
