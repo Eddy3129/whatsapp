@@ -1,8 +1,7 @@
 package org.example;
 
 import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.Scanner;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -12,6 +11,7 @@ public class ChatUI {
     private volatile boolean isInChatMode = false;
     private String currentChatPartner = null;
     private final Scanner scanner;
+    private final Set<String> chatPartners = new HashSet<>();
 
     private static final String CLEAR_CONSOLE = "\033[H\033[2J";
     private static final String SYSTEM_COLOR = "\u001B[33m";  // Yellow
@@ -19,6 +19,7 @@ public class ChatUI {
     private static final String HEADER_COLOR = "\u001B[36m";  // Cyan
     private static final String SENDER_COLOR = "\u001B[32m";  // Green
     private static final String TIMESTAMP_COLOR = "\u001B[90m"; // Gray
+    private static final String NEW_MSG_COLOR = "\u001B[35m";  // Purple
     private static final String RESET_COLOR = "\u001B[0m";
     private static final String DIVIDER = createDivider('─', 50);
     private static final String DOUBLE_DIVIDER = createDivider('═', 50);
@@ -88,15 +89,55 @@ public class ChatUI {
 
     public void displayMessage(Message message) {
         String timestamp = TIMESTAMP_COLOR + "[" + message.getTimestamp().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "]" + RESET_COLOR;
-        String sender = message.getSender().equals(username) ?
-                "You" :
-                SENDER_COLOR + message.getSender() + RESET_COLOR;
-        String formattedMessage = String.format("%s %s: %s",
-                timestamp,
-                sender,
-                message.getContent()
-        );
-        messageQueue.offer(formattedMessage);
+
+        // Check if this is a new message from someone we haven't chatted with
+        if (!message.getSender().equals(username) &&
+                (!isInChatMode || !message.getSender().equals(currentChatPartner)) &&
+                !chatPartners.contains(message.getSender())) {
+
+            // Create a boxed notification for new messages
+            String notification = String.format("\n%s %s ┌─────────────────────────────────┐%s",
+                    timestamp,
+                    NEW_MSG_COLOR,
+                    RESET_COLOR);
+
+            String messageLine = String.format("%s %s │ New message from %s%s",
+                    createPadding(11),
+                    NEW_MSG_COLOR,
+                    message.getSender(),
+                    RESET_COLOR);
+
+            String contentLine = String.format("%s %s │ %s%s",
+                    createPadding(11),
+                    NEW_MSG_COLOR,
+                    message.getContent(),
+                    RESET_COLOR);
+
+            String bottomBorder = String.format("%s %s └─────────────────────────────────┘%s",
+                    createPadding(11),
+                    NEW_MSG_COLOR,
+                    RESET_COLOR);
+
+            messageQueue.offer(notification);
+            messageQueue.offer(messageLine);
+            messageQueue.offer(contentLine);
+            messageQueue.offer(bottomBorder);
+
+            if (isInChatMode) {
+                messageQueue.offer("\nYou: ");
+            }
+        } else {
+            // Regular message display for existing chat partners
+            String sender = message.getSender().equals(username) ?
+                    "You" :
+                    SENDER_COLOR + message.getSender() + RESET_COLOR;
+            String formattedMessage = String.format("%s %s: %s",
+                    timestamp,
+                    sender,
+                    message.getContent()
+            );
+            messageQueue.offer(formattedMessage);
+        }
     }
 
     public void displaySystemMessage(String message) {
@@ -123,6 +164,10 @@ public class ChatUI {
     }
 
     public void displayChatHistory(List<Message> messages) {
+        if (currentChatPartner != null) {
+            chatPartners.add(currentChatPartner);
+        }
+
         clearScreen();
         System.out.println(HEADER_COLOR + "┌" + DOUBLE_DIVIDER + "┐" + RESET_COLOR);
         System.out.println(HEADER_COLOR + "│" + SYSTEM_COLOR + " Chat with " + currentChatPartner +
@@ -155,6 +200,7 @@ public class ChatUI {
     public void enterChatMode(String partner) {
         isInChatMode = true;
         currentChatPartner = partner;
+        chatPartners.add(partner);
         clearScreen();
         displaySystemMessage("📱 Starting chat with " + partner);
     }
