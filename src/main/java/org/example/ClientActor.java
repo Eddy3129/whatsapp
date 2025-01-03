@@ -1,4 +1,3 @@
-// ClientActor.java
 package org.example;
 
 import akka.actor.AbstractActor;
@@ -31,21 +30,49 @@ public class ClientActor extends AbstractActor {
     @Override
     public Receive createReceive() {
         return receiveBuilder()
-                .match(ServerActor.RegistrationSuccess.class, success -> {
-                    log.info("Registered with server as {}", success.getName());
+                .match(ServerActor.RegistrationSuccess.class, msg -> {
+                    log.info("Registered with server as {}", msg.getName());
                     chatUI.displaySystemMessage("Successfully connected to chat server");
                 })
-                .match(ServerActor.ClientList.class, clientList -> {
-                    chatUI.displayAvailableClients(clientList.getClients());
+                .match(ServerActor.ClientList.class, msg -> {
+                    chatUI.displayAvailableClients(msg.getClients());
                 })
-                .match(Message.class, message -> {
-                    chatUI.displayMessage(message);
+                .match(Message.class, msg -> {
+                    chatUI.displayMessage(msg);
                 })
-                .match(ServerActor.ChatHistory.class, history -> {
-                    chatUI.displayChatHistory(history.getMessages());
+                .match(ServerActor.ChatHistory.class, msg -> {
+                    chatUI.displayChatHistory(msg.getMessages());
                 })
-                .match(ServerActor.ErrorMessage.class, error -> {
-                    chatUI.displayError(error.getError());
+                .match(ServerActor.GroupCreated.class, msg -> {
+                    chatUI.displaySystemMessage("Group created: " + msg.getGroup().getName());
+                    chatUI.enterGroupChatMode(msg.getGroup().getName());
+                })
+                .match(ServerActor.GroupInvitation.class, msg -> {
+                    chatUI.displayGroupInvitation(msg.getGroupName(), msg.getInviter());
+                })
+                .match(ServerActor.JoinedGroup.class, msg -> {
+                    chatUI.displaySystemMessage("Successfully joined group: " + msg.getGroup().getName());
+                    chatUI.enterGroupChatMode(msg.getGroup().getName());
+                })
+                .match(ServerActor.GroupList.class, msg -> {
+                    chatUI.displayGroupList(msg.getGroups());
+                })
+                .match(ServerActor.GroupChatHistory.class, msg -> {
+                    chatUI.displayGroupChatHistory(msg.getGroup(), msg.getMessages());
+                })
+                .match(ServerActor.LeftGroup.class, msg -> {
+                    chatUI.displaySystemMessage("Left group: " + msg.getGroupName());
+                    chatUI.exitGroupChatMode();
+                })
+                .match(ServerActor.GroupDisbanded.class, msg -> {
+                    chatUI.displaySystemMessage("Group disbanded: " + msg.getGroupName());
+                    chatUI.exitGroupChatMode();
+                })
+                .match(ServerActor.SystemMessage.class, msg -> {
+                    chatUI.displaySystemMessage(msg.getMessage());
+                })
+                .match(ServerActor.ErrorMessage.class, msg -> {
+                    chatUI.displayError(msg.getError());
                 })
                 .build();
     }
